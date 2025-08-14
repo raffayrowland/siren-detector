@@ -4,7 +4,6 @@ load_dotenv()
 
 import librosa
 import tensorflow as tf
-from tensorflow import keras
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, Dense, Flatten, Input
 
@@ -21,6 +20,8 @@ def preprocess(file_path, label):
     spec = tf.signal.stft(wav, 320, 32)
     spec = tf.abs(spec)[..., tf.newaxis]
     return spec, label
+
+# ----- PROCESS DATA ------
 
 # directories for the positive and negative training files
 POSITIVE = "data\\positive"
@@ -40,7 +41,7 @@ negativeCount = tf.data.experimental.cardinality(negatives).numpy()
 total = positiveCount + negativeCount
 print(f"Positive samples: {positiveCount},  Negative samples: {negativeCount},  Total samples: {total}")
 classWeight = {
-    0: total / (2 * negativeCount) * 3,
+    0: total / (2 * negativeCount) * 3,  # Penalise false positives
     1: total / (2 * positiveCount),
 }
 
@@ -61,6 +62,8 @@ test = data.skip(int(len(data) * 0.7)).take(len(data) - int(len(data) * 0.7))
 
 print(len(train), len(test))
 
+# ----- TRAIN -----
+
 # define the model's layers
 model = Sequential()
 model.add(Input(shape=(1866, 257, 1)))
@@ -72,7 +75,9 @@ model.compile("Adam", loss="BinaryCrossentropy", metrics=[tf.keras.metrics.Recal
 model.summary()
 
 # Train the model
-hist = model.fit(train, epochs=5, validation_data=test, class_weight=classWeight)
+hist = model.fit(train, epochs=1, validation_data=test, class_weight=classWeight)
+
+# ----- SAVE MODEL -----
 
 try:
     model.save('models\\my_model.keras')
@@ -81,12 +86,3 @@ try:
 except ValueError:
     model.save("models\\siren_detector.h5")
     print("Saved model")
-
-
-xtest, ytest = test.as_numpy_iterator().next()
-
-yhat = model.predict(xtest)
-
-yhat = [1 if prediction > 0.5 else 0 for prediction in yhat]
-print(yhat)
-print(ytest.astype(int))
