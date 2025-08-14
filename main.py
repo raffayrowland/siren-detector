@@ -5,7 +5,7 @@ load_dotenv()
 import librosa
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, Dense, Flatten
+from tensorflow.keras.layers import Conv2D, Dense, Flatten, Input
 from matplotlib import pyplot as plt
 import os
 
@@ -33,12 +33,12 @@ neg = tf.data.Dataset.list_files(NEGATIVE + '\*.wav')
 
 # turn those lists into datasets, and add the 1/0 labels for siren/no siren
 positives = tf.data.Dataset.zip((pos, tf.data.Dataset.from_tensor_slices(tf.ones(len(pos)))))
-negatives = tf.data.Dataset.zip((pos, tf.data.Dataset.from_tensor_slices(tf.zeros(len(pos)))))
+negatives = tf.data.Dataset.zip((neg, tf.data.Dataset.from_tensor_slices(tf.zeros(len(neg)))))
 
 # There are considerably more non-siren examples than siren examples, so this weights each class to make it fair
 positiveCount = tf.data.experimental.cardinality(positives).numpy()
-negativeCount= tf.data.experimental.cardinality(negatives).numpy()
-total =  positiveCount + negativeCount
+negativeCount = tf.data.experimental.cardinality(negatives).numpy()
+total = positiveCount + negativeCount
 classWeight = {
     0: total / (2 * negativeCount),
     1: total / (2 * positiveCount),
@@ -47,18 +47,21 @@ classWeight = {
 data = positives.concatenate(negatives) # concatenate them to one dataset
 
 data = data.map(preprocess)
-data = data.cache()
 data = data.shuffle(buffer_size=1000)
 data = data.batch(16)
 data = data.prefetch(8)
 
-# define the training and testing partitions
-train = data.take(6112)
-test = data.skip(6112).take(2620)
+# define the training and testing partitions (commented cache to save on ram)
+train = data.take(int(len(data) * 0.7))
+test = data.skip(int(len(data) * 0.7)).take(len(data) - int(len(data) * 0.7))
+# train = train.cache()
+# test = test.cache()
+
+print(len(train), len(test))
 
 # define the model's layers
 model = Sequential()
-model.add(Conv2D(16, (3, 3), activation='relu', input_shape=(1866, 257, 1)))
+model.add(Input(shape=(1866, 257, 1)))
 model.add(Conv2D(16, (3, 3), activation='relu'))
 model.add(Flatten())
 model.add(Dense(128, activation='relu'))
@@ -68,3 +71,12 @@ model.summary()
 
 # Train the model
 hist = model.fit(train, epochs=4, validation_data=test, class_weight=classWeight)
+model.save("models\\siren_detector.keras")
+
+xtest, ytest = test.as_numpy_iterator().next()
+
+yhat = model.predict(xtest)
+
+yhat = [1 if prediction > 0.5 else 0 for prediction in yhat]
+print(yhat)
+print(ytest.astype(int))
