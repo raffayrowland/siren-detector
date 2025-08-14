@@ -2,7 +2,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import soundata
 import librosa
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
@@ -35,6 +34,16 @@ neg = tf.data.Dataset.list_files(NEGATIVE + '\*.wav')
 # turn those lists into datasets, and add the 1/0 labels for siren/no siren
 positives = tf.data.Dataset.zip((pos, tf.data.Dataset.from_tensor_slices(tf.ones(len(pos)))))
 negatives = tf.data.Dataset.zip((pos, tf.data.Dataset.from_tensor_slices(tf.zeros(len(pos)))))
+
+# There are considerably more non-siren examples than siren examples, so this weights each class to make it fair
+positiveCount = tf.data.experimental.cardinality(positives).numpy()
+negativeCount= tf.data.experimental.cardinality(negatives).numpy()
+total =  positiveCount + negativeCount
+classWeight = {
+    0: total / (2 * negativeCount),
+    1: total / (2 * positiveCount),
+}
+
 data = positives.concatenate(negatives) # concatenate them to one dataset
 
 data = data.map(preprocess)
@@ -58,4 +67,4 @@ model.compile("Adam", loss="BinaryCrossentropy", metrics=[tf.keras.metrics.Recal
 model.summary()
 
 # Train the model
-hist = model.fit(train, epochs=4, validation_data=test)
+hist = model.fit(train, epochs=4, validation_data=test, class_weight=classWeight)
