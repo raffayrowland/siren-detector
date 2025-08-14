@@ -5,26 +5,28 @@ load_dotenv()
 import soundata
 import librosa
 import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, Dense, Flatten
 from matplotlib import pyplot as plt
 import os
 
 def load_wav_16k_mono(path):
     y, _ = librosa.load(path, sr=16000, mono=True)
-    return y
+    return y.astype("float32")
 
 def preprocess(file_path, label):
-    wav = load_wav_16k_mono(file_path)
+    wav = tf.numpy_function(load_wav_16k_mono, [file_path], tf.float32)
+    wav.set_shape([None])            # let TF know it's 1-D
     wav = wav[:60000]
-    zero_padding = tf.zeros([60000] - tf.shape(wav), dtype=tf.float32)
-    wav = tf.concat([zero_padding, wav], 0)
-    spectrogram = tf.signal.stft(wav, frame_length=320, frame_step=32)
-    spectrogram = tf.abs(spectrogram)
-    spectrogram = tf.expand_dims(spectrogram, axis=2)
-    return spectrogram, label
+    padding = 60000 - tf.shape(wav)[0]
+    wav = tf.pad(wav, [[0, padding]])
+    spec = tf.signal.stft(wav, 320, 32)
+    spec = tf.abs(spec)[..., tf.newaxis]
+    return spec, label
 
 # directories for the positive and negative training files
-POSITIVE = "data\\train\\positive"
-NEGATIVE = "data\\train\\negative"
+POSITIVE = "data\\positive"
+NEGATIVE = "data\\negative"
 
 # gets a list of wav files in those directories
 pos = tf.data.Dataset.list_files(POSITIVE + '\*.wav')
@@ -35,16 +37,25 @@ positives = tf.data.Dataset.zip((pos, tf.data.Dataset.from_tensor_slices(tf.ones
 negatives = tf.data.Dataset.zip((pos, tf.data.Dataset.from_tensor_slices(tf.zeros(len(pos)))))
 data = positives.concatenate(negatives) # concatenate them to one dataset
 
-# get a list of all the lengths of the wav files
-lengths = []
-for file in os.listdir("data\\train\\positive"):
-    tensorWave = load_wav_16k_mono(os.path.join("data\\train\\positive", file))
-    lengths.append(len(tensorWave))
+data = data.map(preprocess)
+data = data.cache()
+data = data.shuffle(buffer_size=1000)
+data = data.batch(16)
+data = data.prefetch(8)
 
-filepath, label = negatives.shuffle(buffer_size=10000).as_numpy_iterator().next()
-spectrogram, label = preprocess(filepath, label)
-print(spectrogram)
+# define the training and testing partitions
+train = data.take(6112)
+test = data.skip(6112).take(2620)
 
-plt.figure(figsize=(30, 20))
-plt.imshow(tf.transpose(spectrogram)[0])
-plt.show()
+# define the model's layers
+model = Sequential()
+model.add(Conv2D(16, (3, 3), activation='relu', input_shape=(1866, 257, 1)))
+model.add(Conv2D(16, (3, 3), activation='relu'))
+model.add(Flatten())
+model.add(Dense(128, activation='relu'))
+model.add(Dense(1, activation='sigmoid'))
+model.compile("Adam", loss="BinaryCrossentropy", metrics=[tf.keras.metrics.Recall(), tf.keras.metrics.Precision()])
+model.summary()
+
+# Train the model
+hist = model.fit(train, epochs=4, validation_data=test)
