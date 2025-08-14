@@ -4,10 +4,9 @@ load_dotenv()
 
 import librosa
 import tensorflow as tf
+from tensorflow import keras
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, Dense, Flatten, Input
-from matplotlib import pyplot as plt
-import os
 
 def load_wav_16k_mono(path):
     y, _ = librosa.load(path, sr=16000, mono=True)
@@ -39,10 +38,13 @@ negatives = tf.data.Dataset.zip((neg, tf.data.Dataset.from_tensor_slices(tf.zero
 positiveCount = tf.data.experimental.cardinality(positives).numpy()
 negativeCount = tf.data.experimental.cardinality(negatives).numpy()
 total = positiveCount + negativeCount
+print(f"Positive samples: {positiveCount},  Negative samples: {negativeCount},  Total samples: {total}")
 classWeight = {
-    0: total / (2 * negativeCount),
+    0: total / (2 * negativeCount) * 3,
     1: total / (2 * positiveCount),
 }
+
+print(f"Negative weight: {classWeight[0]},  Positive weight: {classWeight[1]}")
 
 data = positives.concatenate(negatives) # concatenate them to one dataset
 
@@ -70,8 +72,16 @@ model.compile("Adam", loss="BinaryCrossentropy", metrics=[tf.keras.metrics.Recal
 model.summary()
 
 # Train the model
-hist = model.fit(train, epochs=4, validation_data=test, class_weight=classWeight)
-model.save("models\\siren_detector.keras")
+hist = model.fit(train, epochs=5, validation_data=test, class_weight=classWeight)
+
+try:
+    model.save('models\\my_model.keras')
+    print("Saved model")
+
+except ValueError:
+    model.save("models\\siren_detector.h5")
+    print("Saved model")
+
 
 xtest, ytest = test.as_numpy_iterator().next()
 

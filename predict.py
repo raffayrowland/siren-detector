@@ -29,16 +29,20 @@ def preprocess(file_path, label):
     return spec, label
 
 print("Loading model and dataset...")
-model = load_model("models/siren_detector.keras")
-dataset = soundata.initialize('urbansound8k', data_home="C:\\Users\\raffa\\PycharmProjects\\siren-detector")
+model = load_model("models/siren_detector.h5")
+dataset = soundata.initialize('urbansound8k', data_home="urbansound8k")
 # dataset.download()
 # dataset.validate()
 
-while True:
+correctCounter = 0
+incorrectCounter = 0
+counter = 0
+
+for i in range(1000):
     clip = dataset.choice_clip()
     fold = clip.fold
     id = clip.clip_id
-    path = os.path.join("audio", f"fold{fold}", f"{id}.wav")
+    path = os.path.join("urbansound8k", "audio", f"fold{fold}", f"{id}.wav")
     class_label = clip.class_label
     print(f"\nPredicting file {path}...")
 
@@ -49,7 +53,17 @@ while True:
     yhat = model.predict(spec)
     probability = float(yhat[0, 0])
     prediction = "siren" if probability > 0.5 else "not siren"
+    correct = "True" if prediction == class_label == "siren" else "True" if prediction != class_label and prediction != "siren" else "False"
 
-    print(f"\nFor file {path}:\n  Actual label: {class_label}\n  Predicted label: {prediction}")
-    input("\nPress enter to continue...")
+    if correct == "True":
+        correctCounter += 1
+
+    else:
+        incorrectCounter += 1
+
+    counter += 1
+
+    print(f"\nFor file {path}:\n  Actual label: {class_label}\n  Predicted label: {prediction}\n  Correct: {correct}")
+    print(f"Correct: {correctCounter} / Incorrect: {incorrectCounter},  average correct: {correctCounter/counter}")
+    # input("\nPress enter to continue...")
 
