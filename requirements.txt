@@ -1,6 +1,10 @@
-soundata~=1.0.1
-librosa~=0.11.0
-tensorflow~=2.20.0
-python-dotenv~=1.1.1
-matplotlib~=3.10.5
-protobuf~=5.28.3
+python-dotenv
+soundata
+numpy
+librosa
+soundfile
+audioread
+h5py
+tensorflow
+tensorflow-model-optimization
+tf_keras

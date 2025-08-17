@@ -4,8 +4,6 @@ load_dotenv()
 
 import librosa
 import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, Dense, Flatten, Input
 
 def load_wav_16k_mono(path):
     y, _ = librosa.load(path, sr=16000, mono=True)
@@ -54,35 +52,108 @@ data = data.shuffle(buffer_size=1000)
 data = data.batch(16)
 data = data.prefetch(8)
 
-# define the training and testing partitions (commented cache to save on ram)
+# define the training and testing partitions
 train = data.take(int(len(data) * 0.7))
 test = data.skip(int(len(data) * 0.7)).take(len(data) - int(len(data) * 0.7))
-# train = train.cache()
-# test = test.cache()
+del data
+train = train.cache()
+test = test.cache()
 
-print(len(train), len(test))
+print(f"Training batches: {len(train)}, Testing batches: {len(test)}")
 
 # ----- TRAIN -----
+from tensorflow_model_optimization.python.core.keras.compat import keras
 
 # define the model's layers
-model = Sequential()
-model.add(Input(shape=(1866, 257, 1)))
-model.add(Conv2D(16, (3, 3), activation='relu'))
-model.add(Flatten())
-model.add(Dense(128, activation='relu'))
-model.add(Dense(1, activation='sigmoid'))
-model.compile("Adam", loss="BinaryCrossentropy", metrics=[tf.keras.metrics.Recall(), tf.keras.metrics.Precision()])
-model.summary()
+model = keras.Sequential([
+  keras.layers.Input(shape=(1866, 257, 1)),
+  keras.layers.Conv2D(16, (3, 3), activation='relu'),
+  keras.layers.Flatten(),
+  keras.layers.Dense(64, activation='relu'),
+  keras.layers.Dense(1, activation='sigmoid'),
+])
+model.compile(optimizer=keras.optimizers.Adam(), loss=keras.losses.BinaryCrossentropy(), metrics=[keras.metrics.Recall(), keras.metrics.Precision()])
 
 # Train the model
 hist = model.fit(train, epochs=1, validation_data=test, class_weight=classWeight)
 
+loss, recall, precision = model.evaluate(test)
+print(f"Baseline stats:  Loss: {loss}, Precision: {precision}, Recall: {recall}")
+
 # ----- SAVE MODEL -----
+from tensorflow.keras import backend as K
+
+model.save_weights("weights\\pretrained_weights.h5")
 
 try:
-    model.save('models\\my_model.keras')
-    print("Saved model")
+    model.save("models/siren_detector.keras")
+    print("Saved model in keras format")
 
-except ValueError:
+except ValueError as e:
+    print(e)
     model.save("models\\siren_detector.h5")
     print("Saved model")
+
+# Clear unused stuff from memory
+del model, train, test, hist
+K.clear_session()
+
+# ----- PRUNE MODEL -----
+
+import tensorflow_model_optimization as tfmot
+
+EPOCHS = 1
+
+# Redefine the base model for pruning
+baseModel = keras.Sequential([
+  keras.layers.Input(shape=(1866, 257, 1)),
+  keras.layers.Conv2D(16, (3, 3), activation='relu'),
+  keras.layers.Flatten(),
+  keras.layers.Dense(64, activation='relu'),
+  keras.layers.Dense(1, activation='sigmoid'),
+])
+
+# Build a more memory-friendly dataset for pruning
+data = positives.concatenate(negatives)
+data = data.map(preprocess, num_parallel_calls=tf.data.AUTOTUNE)
+data = data.shuffle(buffer_size=325)
+data = data.batch(4)
+data = data.prefetch(1)
+
+# Define the new training and test datasets
+train = data.take(int(len(data) * 0.7))
+test = data.skip(int(len(data) * 0.7)).take(len(data) - int(len(data) * 0.7))
+
+# Load pretrained model weights and set parameters for pruning
+baseModel.load_weights("weights\\pretrained_weights.h5")
+steps_per_epoch = int(tf.data.experimental.cardinality(train).numpy())
+pruning_params = {
+  'pruning_schedule': tfmot.sparsity.keras.PolynomialDecay(
+     initial_sparsity=0.0,
+     final_sparsity=0.5,
+     begin_step=0,
+     end_step=steps_per_epoch * EPOCHS
+  )
+}
+callbacks = [tfmot.sparsity.keras.UpdatePruningStep()]
+
+modelForPruning = tfmot.sparsity.keras.prune_low_magnitude(baseModel, **pruning_params)
+modelForPruning.summary()
+modelForPruning.compile(optimizer=keras.optimizers.Adam(), loss=keras.losses.BinaryCrossentropy(), metrics=[keras.metrics.Recall(), keras.metrics.Precision()])
+
+# Train the model
+modelForPruning.fit(train, epochs=EPOCHS, validation_data=test, callbacks=callbacks)
+del callbacks
+
+# Strip the pruning
+modelForExport = tfmot.sparsity.keras.strip_pruning(modelForPruning)
+del modelForPruning
+modelForExport.summary()
+modelForExport.compile(optimizer=keras.optimizers.Adam(), loss=keras.losses.BinaryCrossentropy(), metrics=[keras.metrics.Recall(), keras.metrics.Precision()])
+
+# Evaluate the model
+loss, recall, precision = modelForExport.evaluate(test)
+print(f"Pruned stats:  Loss: {loss}, Precision: {precision}, Recall: {recall}")
+
+# Save the model
+modelForExport.save("models\\pruned_model.h5", include_optimizer=True)

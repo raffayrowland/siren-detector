@@ -29,7 +29,12 @@ def preprocess(file_path, label):
     return spec, label
 
 print("Loading model and dataset...")
-model = load_model("models/siren_detector.h5")
+model = load_model("models\\pruned_model.h5", compile=False)
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(),
+    loss=tf.keras.losses.BinaryCrossentropy(),
+    metrics=[tf.keras.metrics.Recall(), tf.keras.metrics.Precision(), tf.keras.metrics.Accuracy()]
+)
 dataset = soundata.initialize('urbansound8k', data_home="urbansound8k")
 # dataset.download()
 # dataset.validate()
