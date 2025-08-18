@@ -29,7 +29,7 @@ def preprocess(file_path, label):
     return spec, label
 
 print("Loading model and dataset...")
-model = load_model("models\\pruned_model.h5", compile=False)
+model = load_model("models\\siren_detector.h5", compile=False)
 model.compile(
     optimizer=tf.keras.optimizers.Adam(),
     loss=tf.keras.losses.BinaryCrossentropy(),
