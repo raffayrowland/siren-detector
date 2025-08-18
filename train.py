@@ -19,7 +19,7 @@ model = keras.Sequential([
   keras.layers.Input(shape=(1866, 257, 1)),
   keras.layers.Conv2D(16, (3, 3), activation='relu'),
   keras.layers.Flatten(),
-  keras.layers.Dense(112, activation='relu'),
+  keras.layers.Dense(128, activation='relu'),
   keras.layers.Dense(1, activation='sigmoid'),
 ])
 model.compile(optimizer=keras.optimizers.Adam(), loss=keras.losses.BinaryCrossentropy(), metrics=[keras.metrics.Recall(), keras.metrics.Precision()])
@@ -36,7 +36,7 @@ print(f"Baseline stats:  Loss: {loss}, Precision: {precision}, Recall: {recall}"
 model.save_weights("weights\\pretrained_weights.h5")
 
 try:
-    model.save("models/siren_detector.keras")
+    model.save("models\\siren_detector")
     model.save("models\\siren_detector.h5")
     print("Saved model in keras format")
 

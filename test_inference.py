@@ -28,6 +28,9 @@ def preprocess(file_path, label):
     spec = tf.abs(spec)[..., tf.newaxis]
     return spec, label
 
+
+# ----- LOAD MODEL -----
+
 print("Loading model and dataset...")
 model = load_model("models\\siren_detector.h5", compile=False)
 model.compile(
@@ -35,15 +38,21 @@ model.compile(
     loss=tf.keras.losses.BinaryCrossentropy(),
     metrics=[tf.keras.metrics.Recall(), tf.keras.metrics.Precision(), tf.keras.metrics.Accuracy()]
 )
+
+# ----- GET DATASET -----
+
 dataset = soundata.initialize('urbansound8k', data_home="urbansound8k")
 # dataset.download()
 # dataset.validate()
 
 correctCounter = 0
 incorrectCounter = 0
-counter = 0
+
+# ----- DO INFERENCE -----
 
 for i in range(1000):
+
+    # resolve the path of the file about to be predicted
     clip = dataset.choice_clip()
     fold = clip.fold
     id = clip.clip_id
@@ -52,7 +61,6 @@ for i in range(1000):
     print(f"\nPredicting file {path}...")
 
     spec, _ = preprocess(path, label=0)  # label here does not matter as it is ignored at inference
-
     spec = tf.expand_dims(spec, axis=0)
 
     yhat = model.predict(spec)
@@ -66,9 +74,7 @@ for i in range(1000):
     else:
         incorrectCounter += 1
 
-    counter += 1
-
-    print(f"\nFor file {path}:\n  Actual label: {class_label}\n  Predicted label: {prediction}\n  Correct: {correct}")
-    print(f"Correct: {correctCounter} / Incorrect: {incorrectCounter},  average correct: {correctCounter/counter}")
+    print(f"\nFor file {path}:\n  Actual label: {class_label}\n  Predicted label: {prediction}\n  Certainty: {probability}\n  Correct: {correct}")
+    print(f"Correct: {correctCounter} / Incorrect: {incorrectCounter},  average correct: {correctCounter/(i+1)}")
     # input("\nPress enter to continue...")
 

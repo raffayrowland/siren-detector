@@ -24,7 +24,7 @@ random.shuffle(shuffled)
 negativeCounter = 0
 for key, clip in shuffled:
     soundClass = "positive" if clip.class_id == 8 else "negative"
-    if soundClass == "negative" and negativeCounter < 929:
+    if soundClass == "negative" and negativeCounter < 2000:
         shutil.copy(clip.audio_path, f"{DESTINATION}/{soundClass}/{key}.wav")
         print(f"Copied file {key}.wav to {DESTINATION}/{soundClass}/{key}.wav")
         negativeCounter += 1
