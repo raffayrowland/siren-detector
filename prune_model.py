@@ -6,11 +6,12 @@ import tensorflow as tf
 train, test, classWeight = get_datasets()
 EPOCHS = 2
 
+T = 1 + (60000 - 320) // 32
 baseModel = keras.Sequential([
-      keras.layers.Input(shape=(1866, 257, 1)),
+    keras.layers.Input(shape=(T, 64, 1)),
       keras.layers.Conv2D(16, (3, 3), activation='relu'),
       keras.layers.Flatten(),
-      keras.layers.Dense(112, activation='relu'),
+      keras.layers.Dense(96, activation='relu'),
       keras.layers.Dense(1, activation='sigmoid'),
 ])
 

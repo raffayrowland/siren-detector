@@ -24,9 +24,21 @@ def preprocess(file_path, label):
     wav = wav[:60000]
     padding = 60000 - tf.shape(wav)[0]
     wav = tf.pad(wav, [[0, padding]])
-    spec = tf.signal.stft(wav, 320, 32)
-    spec = tf.abs(spec)[..., tf.newaxis]
-    return spec, label
+
+    stft = tf.signal.stft(wav, frame_length=320, frame_step=32)
+    mag = tf.abs(stft)
+
+    num_mel_bins = 64
+    num_spectrogram_bins = mag.shape[-1]
+    lower_hz, upper_hz = 80.0, 7600.0
+    linear_to_mel = tf.signal.linear_to_mel_weight_matrix(
+        num_mel_bins, num_spectrogram_bins, 16000, lower_hz, upper_hz
+    )
+    mel = tf.matmul(mag, linear_to_mel)
+
+    log_mel = tf.math.log(mel + 1e-6)[..., tf.newaxis]
+
+    return log_mel, label
 
 
 # ----- LOAD MODEL -----

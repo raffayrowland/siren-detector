@@ -12,18 +12,20 @@ train, test, classWeight = get_datasets()
 
 from tensorflow_model_optimization.python.core.keras.compat import keras
 
-EPOCHS = 5
+EPOCHS = 200
+T = 1 + (60000 - 320) // 32
 
 # define the model's layers
 model = keras.Sequential([
-  keras.layers.Input(shape=(1866, 257, 1)),
+  keras.layers.Input(shape=(T, 64, 1)),
   keras.layers.Conv2D(16, (3, 3), activation='relu'),
   keras.layers.Flatten(),
-  keras.layers.Dense(128, activation='relu'),
+  keras.layers.Dense(96, activation='relu'),
   keras.layers.Dense(1, activation='sigmoid'),
 ])
 model.compile(optimizer=keras.optimizers.Adam(), loss=keras.losses.BinaryCrossentropy(), metrics=[keras.metrics.Recall(), keras.metrics.Precision()])
 model.summary()
+
 
 # Train the model
 hist = model.fit(train, epochs=EPOCHS, validation_data=test, class_weight=classWeight)
