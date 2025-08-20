@@ -13,8 +13,8 @@ from queue import Queue
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
-WINDOW_SIZE = 60000
-STRIDE = 20000
+WINDOW_SIZE = 16000
+STRIDE = 8000
 
 print("Loading model...")
 model = load_model("models\\siren_detector.h5", compile=False)
@@ -44,17 +44,19 @@ def preprocess(wave):
 
     return log_mel[tf.newaxis, ..., tf.newaxis]
 
-def process_chunk(samples):
+def process_chunk(samples, previous):
     logMel = preprocess(samples)
 
     yhat = model.predict(logMel, verbose=0)
     probability = float(yhat[0][0])
-    prediction = True if probability > 0.8 else False
+    prediction = True if probability > 0.5 else False
 
-    if prediction:
-        print("\rSiren detected!", end="\n")
+    if not prediction and not previous:
+        print("\r❌No siren detected!  ", end="")
     else:
-        print("\rNo siren detected!", end="\n")
+        print("\r✅Siren detected!  ", end="")
+
+    return prediction
 
 q = Queue()
 running = True
@@ -67,6 +69,9 @@ def audio_callback(indata, frames, t, status):
 def worker():
     buf = np.empty(0, dtype=np.float32)
     stride = 0
+
+    previous = False # No siren in previous clip at the beginning
+
     while running or not q.empty():
         chunk = q.get()
         buf = np.concatenate((buf, chunk))
@@ -74,7 +79,7 @@ def worker():
             buf = buf[-WINDOW_SIZE:]
         stride += chunk.size
         while stride >= STRIDE and buf.size >= WINDOW_SIZE:
-            process_chunk(buf[-WINDOW_SIZE:].copy())
+            previous = process_chunk(buf[-WINDOW_SIZE:].copy(), previous)
             stride -= STRIDE
         q.task_done()
 

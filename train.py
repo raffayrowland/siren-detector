@@ -15,8 +15,8 @@ test = test.cache()
 
 from tensorflow_model_optimization.python.core.keras.compat import keras
 
-EPOCHS = 5
-T = 1 + (60000 - 320) // 32
+EPOCHS = 20
+T = 1 + (16000 - 320) // 32
 
 # define the model's layers
 model = keras.Sequential([
