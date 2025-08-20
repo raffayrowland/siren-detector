@@ -23,7 +23,7 @@ python predict_live.py
 
 ## Requirements
 
-* Python 3.x
+* Python 3.11
 * 4GB RAM for training
 * 1GB RAM for inference
 * 550mb disk space for model
