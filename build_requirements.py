@@ -14,8 +14,8 @@ for soundClass in ["positive", "negative"]:
     os.makedirs(f"{DESTINATION}/{soundClass}", exist_ok=True)
 
 dataset = soundata.initialize('urbansound8k', data_home="urbansound8k")
-# dataset.download()
-# dataset.validate()
+dataset.download()
+dataset.validate()
 dataDict = dataset.load_clips()
 shuffled = list(dataDict.items())
 random.shuffle(shuffled)
