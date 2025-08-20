@@ -62,7 +62,7 @@ incorrectCounter = 0
 
 # ----- DO INFERENCE -----
 
-for i in range(1000):
+for i in range(10000):
 
     # resolve the path of the file about to be predicted
     clip = dataset.choice_clip()

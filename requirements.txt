@@ -8,3 +8,4 @@ h5py
 tensorflow
 tensorflow-model-optimization
 tf_keras
+sounddevice

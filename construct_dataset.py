@@ -46,7 +46,7 @@ def get_datasets():
     total = positiveCount + negativeCount
     print(f"Positive samples: {positiveCount},  Negative samples: {negativeCount},  Total samples: {total}")
     classWeight = {
-        0: total / (2 * negativeCount) * 2,  # Penalise false positives
+        0: total / (2 * negativeCount) * 2.5,  # Penalise false positives
         1: total / (2 * positiveCount),
     }
 

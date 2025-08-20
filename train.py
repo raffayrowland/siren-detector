@@ -8,11 +8,14 @@ from construct_dataset import get_datasets
 
 train, test, classWeight = get_datasets()
 
+train = train.cache()
+test = test.cache()
+
 # ----- TRAIN -----
 
 from tensorflow_model_optimization.python.core.keras.compat import keras
 
-EPOCHS = 200
+EPOCHS = 5
 T = 1 + (60000 - 320) // 32
 
 # define the model's layers
