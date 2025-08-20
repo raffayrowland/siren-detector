@@ -17,7 +17,7 @@ def load_wav_16k_mono(path):
 def preprocess_eager(path):
     wav = load_wav_16k_mono(path)
     wav = wav[:60000]
-    wav = np.pad(wav, (0, max(0, 60000 - len(wav))))
+    wav = np.pad(wav, (0, max(0, 16000 - len(wav))))
 
     spec = tf.signal.stft(
         wav,

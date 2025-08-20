@@ -15,7 +15,7 @@ test = test.cache()
 
 from tensorflow import keras
 
-EPOCHS = 1
+EPOCHS = 13
 T = 1 + (16000 - 320) // 32
 
 # define the model's layers

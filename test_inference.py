@@ -21,8 +21,8 @@ def load_wav_16k_mono(path):
 def preprocess(file_path, label):
     wav = tf.numpy_function(load_wav_16k_mono, [file_path], tf.float32)
     wav.set_shape([None])            # let TF know it's 1-D
-    wav = wav[:60000]
-    padding = 60000 - tf.shape(wav)[0]
+    wav = wav[:16000]
+    padding = 16000 - tf.shape(wav)[0]
     wav = tf.pad(wav, [[0, padding]])
 
     stft = tf.signal.stft(wav, frame_length=320, frame_step=32)
