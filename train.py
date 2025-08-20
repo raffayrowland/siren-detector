@@ -13,9 +13,9 @@ test = test.cache()
 
 # ----- TRAIN -----
 
-from tensorflow_model_optimization.python.core.keras.compat import keras
+from tensorflow import keras
 
-EPOCHS = 20
+EPOCHS = 1
 T = 1 + (16000 - 320) // 32
 
 # define the model's layers
@@ -38,10 +38,10 @@ print(f"Baseline stats:  Loss: {loss}, Precision: {precision}, Recall: {recall}"
 
 # ----- SAVE MODEL -----
 
-model.save_weights("weights\\pretrained_weights.h5")
+model.save_weights("weights\\pretrained.weights.h5")
 
 try:
-    model.save("models\\siren_detector")
+    model.export("models\\siren_detector")
     model.save("models\\siren_detector.h5")
     print("Saved model in keras format")
 
