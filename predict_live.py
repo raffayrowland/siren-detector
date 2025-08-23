@@ -59,7 +59,7 @@ def process_chunk(samples, previous):
     if not prediction and not previous:
         print("\r❌No siren detected!  ", end="")
     else:
-        print("\r✅Siren detected!  ", end="")
+        print("\r✅Siren detected!    ", end="")
 
     return prediction
 
@@ -67,7 +67,7 @@ q = Queue()
 running = True
 
 def audio_callback(indata, frames, t, status):
-    if status:
+    if status and not status.input_overflow:
         print(status, file=sys.stderr)
     q.put(indata[:, 0].astype(np.float32, copy=True))  # mono
 
@@ -95,6 +95,8 @@ try:
     with sd.InputStream(samplerate=SAMPLE_RATE,
                         channels=CHANNELS,
                         dtype='float32',
+                        latency='low',
+                        blocksize=2000,
                         callback=audio_callback):
         print("recording; Ctrl+C to stop")
         while True:

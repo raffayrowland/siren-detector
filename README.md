@@ -2,6 +2,20 @@
 
 Detects emergency vehicle sirens in real time using machine learning to assist people who are hard of hearing while driving or walking near roads. It could also be implemented in any car as an extra safety layer for all drivers
 
+## Demonstrations
+
+None of the audio used in the demonstration is in the training dataset
+
+Demo with siren present:
+
+[![Siren present demo](https://img.youtube.com/vi/eS7ugxmtGb0/0.jpg)](https://www.youtube.com/watch?v=eS7ugxmtGb0)
+
+Demo with no siren present:
+
+[![No siren demo](https://img.youtube.com/vi/wHFWJi1kZ6E/0.jpg)](https://www.youtube.com/watch?v=wHFWJi1kZ6E)
+
+
+
 ## Installation
 
 Clone the repository and set up the environment:
@@ -44,9 +58,9 @@ python predict_live.py
 
 ## Evaluation
 
-* Accuracy: 96% on test set
-* Precision: 0.94
-* Recall: 0.92
+* Accuracy: 95% on test set
+* Precision: 0.92 on test set
+* Recall: 0.99 on test set
 
 ## License
 
