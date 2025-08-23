@@ -16,6 +16,7 @@ CHANNELS = 1
 WINDOW_SIZE = 16000
 STRIDE = 8000
 
+# load and compile model
 print("Loading model...")
 model = load_model("models\\siren_detector.h5", compile=False)
 model.compile(
@@ -25,6 +26,7 @@ model.compile(
 )
 
 def preprocess(wave):
+    # convert wave to tensor and pad if necessary
     wav = tf.convert_to_tensor(wave, dtype=tf.float32)   # ← fix
     wav = wav[:WINDOW_SIZE]
     padding = WINDOW_SIZE - tf.shape(wav)[0]
@@ -33,6 +35,7 @@ def preprocess(wave):
     stft = tf.signal.stft(wav, frame_length=320, frame_step=32)
     mag = tf.abs(stft)
 
+    # generate log-mel spectrogram
     num_mel_bins = 64
     num_spectrogram_bins = mag.shape[-1]  # 1 + frame_length//2
     lower_hz, upper_hz = 80.0, 7600.0
@@ -47,10 +50,12 @@ def preprocess(wave):
 def process_chunk(samples, previous):
     logMel = preprocess(samples)
 
+    # generate prediction
     yhat = model.predict(logMel, verbose=0)
     probability = float(yhat[0][0])
     prediction = True if probability > 0.5 else False
 
+    # Only predict "no siren" if previous prediction was also "no siren", prevent small gaps
     if not prediction and not previous:
         print("\r❌No siren detected!  ", end="")
     else:
