@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import sys
+import os
 import time
 import threading
 import numpy as np
@@ -18,7 +19,7 @@ STRIDE = 8000
 
 # load and compile model
 print("Loading model...")
-model = load_model("models\\siren_detector.h5", compile=False)
+model = load_model(os.path.join("models", "siren_detector.h5"), compile=False)
 model.compile(
     optimizer=tf.keras.optimizers.Adam(),
     loss=tf.keras.losses.BinaryCrossentropy(),

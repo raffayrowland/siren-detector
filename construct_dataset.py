@@ -1,5 +1,9 @@
 import tensorflow as tf
+import os
 import librosa
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
+
 
 def load_wav_16k_mono(path):
     y, _ = librosa.load(path, sr=16000, mono=True)
@@ -29,12 +33,12 @@ def preprocess(file_path, label):
 
 def get_datasets():
     # directories for the positive and negative training files
-    POSITIVE = "data\\positive"
-    NEGATIVE = "data\\negative"
+    POSITIVE = os.path.join(ROOT, "data", "positive")
+    NEGATIVE = os.path.join(ROOT, "data", "negative")
 
     # gets a list of wav files in those directories
-    pos = tf.data.Dataset.list_files(POSITIVE + '\*.wav')
-    neg = tf.data.Dataset.list_files(NEGATIVE + '\*.wav')
+    pos = tf.data.Dataset.list_files(os.path.join(POSITIVE, '*.wav'))
+    neg = tf.data.Dataset.list_files(os.path.join(NEGATIVE, '*.wav'))
 
     # turn those lists into datasets, and add the 1/0 labels for siren/no siren
     positives = tf.data.Dataset.zip((pos, tf.data.Dataset.from_tensor_slices(tf.ones(len(pos)))))
