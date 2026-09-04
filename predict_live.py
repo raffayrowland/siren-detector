@@ -1,109 +1,123 @@
-from dotenv import load_dotenv
-
-load_dotenv()
-
-import sys
 import os
+import sys
 import time
 import threading
+
 import numpy as np
 import sounddevice as sd
 import tensorflow as tf
-from tensorflow.keras.models import load_model
-from queue import Queue
+
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
-WINDOW_SIZE = 16000
-STRIDE = 8000
+WINDOW_SIZE = 32000
+BLOCK_SIZE = 512
+PREDICTION_INTERVAL = 0.05
+SIREN_THRESHOLD = 0.5
+REQUIRED_SIREN_PREDICTIONS = 10
 
-# load and compile model
+
 print("Loading model...")
-model = load_model(os.path.join("models", "siren_detector.h5"), compile=False)
-model.compile(
-    optimizer=tf.keras.optimizers.Adam(),
-    loss=tf.keras.losses.BinaryCrossentropy(),
-    metrics=[tf.keras.metrics.Recall(), tf.keras.metrics.Precision(), tf.keras.metrics.Accuracy()]
+
+if not os.path.exists("models/siren_detector"):
+    raise FileNotFoundError("No models found")
+
+model = tf.saved_model.load("models/siren_detector")
+
+mel_matrix = tf.signal.linear_to_mel_weight_matrix(
+    num_mel_bins=64,
+    num_spectrogram_bins=257,
+    sample_rate=SAMPLE_RATE,
+    lower_edge_hertz=80.0,
+    upper_edge_hertz=7600.0,
 )
 
-def preprocess(wave):
-    # convert wave to tensor and pad if necessary
-    wav = tf.convert_to_tensor(wave, dtype=tf.float32)   # ← fix
-    wav = wav[:WINDOW_SIZE]
-    padding = WINDOW_SIZE - tf.shape(wav)[0]
-    wav = tf.pad(wav, [[0, padding]])
 
-    stft = tf.signal.stft(wav, frame_length=320, frame_step=32)
-    mag = tf.abs(stft)
-
-    # generate log-mel spectrogram
-    num_mel_bins = 64
-    num_spectrogram_bins = mag.shape[-1]  # 1 + frame_length//2
-    lower_hz, upper_hz = 80.0, 7600.0
-    linear_to_mel = tf.signal.linear_to_mel_weight_matrix(
-        num_mel_bins, num_spectrogram_bins, SAMPLE_RATE, lower_hz, upper_hz
+@tf.function(input_signature=[tf.TensorSpec([WINDOW_SIZE], tf.float32)])
+def predict(samples):
+    spectrogram = tf.signal.stft(
+        samples,
+        frame_length=320,
+        frame_step=32,
+        fft_length=512,
     )
-    mel = tf.matmul(mag, linear_to_mel)
+    mel = tf.matmul(tf.abs(spectrogram), mel_matrix)
     log_mel = tf.math.log(mel + 1e-6)
+    result = model.serve(log_mel[tf.newaxis, ..., tf.newaxis])
+    return tf.reshape(result, [-1])[0]
 
-    return log_mel[tf.newaxis, ..., tf.newaxis]
 
-def process_chunk(samples, previous):
-    logMel = preprocess(samples)
-
-    # generate prediction
-    yhat = model.predict(logMel, verbose=0)
-    probability = float(yhat[0][0])
-    prediction = True if probability > 0.5 else False
-
-    # Only predict "no siren" if previous prediction was also "no siren", prevent small gaps
-    if not prediction and not previous:
-        print("\r❌No siren detected!  ", end="")
-    else:
-        print("\r✅Siren detected!    ", end="")
-
-    return prediction
-
-q = Queue()
+audio_buffer = np.zeros(WINDOW_SIZE, dtype=np.float32)
+buffer_lock = threading.Lock()
+buffer_ready = threading.Event()
+samples_recorded = 0
 running = True
 
-def audio_callback(indata, frames, t, status):
-    if status and not status.input_overflow:
+
+def audio_callback(indata, frames, _time_info, status):
+    global samples_recorded
+
+    if status:
         print(status, file=sys.stderr)
-    q.put(indata[:, 0].astype(np.float32, copy=True))  # mono
 
-def worker():
-    buf = np.empty(0, dtype=np.float32)
-    stride = 0
+    samples = indata[:, 0]
+    with buffer_lock:
+        audio_buffer[:-frames] = audio_buffer[frames:]
+        audio_buffer[-frames:] = samples
+        samples_recorded = min(WINDOW_SIZE, samples_recorded + frames)
+        if samples_recorded == WINDOW_SIZE:
+            buffer_ready.set()
 
-    previous = False # No siren in previous clip at the beginning
 
-    while running or not q.empty():
-        chunk = q.get()
-        buf = np.concatenate((buf, chunk))
-        if buf.size > WINDOW_SIZE:
-            buf = buf[-WINDOW_SIZE:]
-        stride += chunk.size
-        while stride >= STRIDE and buf.size >= WINDOW_SIZE:
-            previous = process_chunk(buf[-WINDOW_SIZE:].copy(), previous)
-            stride -= STRIDE
-        q.task_done()
+def inference_worker():
+    consecutive_sirens = 0
+    buffer_ready.wait()
 
-t = threading.Thread(target=worker, daemon=True)
-t.start()
+    while running:
+        started = time.perf_counter()
+
+        with buffer_lock:
+            samples = audio_buffer.copy()
+
+        probability = float(predict(samples).numpy())
+        if probability >= SIREN_THRESHOLD:
+            consecutive_sirens += 1
+        else:
+            consecutive_sirens = 0
+
+        if consecutive_sirens >= REQUIRED_SIREN_PREDICTIONS:
+            message = "Siren detected!"
+        else:
+            message = f"Listening... {consecutive_sirens}/{REQUIRED_SIREN_PREDICTIONS}"
+
+        print(f"\r{message:<24}", end="", flush=True)
+
+        elapsed = time.perf_counter() - started
+        time.sleep(max(0, PREDICTION_INTERVAL - elapsed))
+
+
+# Build the TensorFlow graph before recording starts.
+predict(np.zeros(WINDOW_SIZE, dtype=np.float32)).numpy()
+
+worker = threading.Thread(target=inference_worker, daemon=True)
+worker.start()
 
 try:
-    with sd.InputStream(samplerate=SAMPLE_RATE,
-                        channels=CHANNELS,
-                        dtype='float32',
-                        latency='low',
-                        blocksize=2000,
-                        callback=audio_callback):
-        print("recording; Ctrl+C to stop")
+    with sd.InputStream(
+        samplerate=SAMPLE_RATE,
+        channels=CHANNELS,
+        dtype="float32",
+        latency="low",
+        blocksize=BLOCK_SIZE,
+        callback=audio_callback,
+    ):
+        print("Recording; Ctrl+C to stop")
         while True:
             time.sleep(0.1)
 except KeyboardInterrupt:
     pass
 finally:
     running = False
-    q.join()
+    buffer_ready.set()
+    worker.join()
+    print()

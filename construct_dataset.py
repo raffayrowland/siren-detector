@@ -1,70 +1,113 @@
 import tensorflow as tf
 import os
+import random
+import soundfile as sf
 import librosa
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+SAMPLE_RATE = 16000
+WINDOW_LENGTH = 2
+WINDOW_SAMPLES = WINDOW_LENGTH * SAMPLE_RATE
+TRAIN_FRACTION = 0.85
+RANDOM_SEED = 1
 
 
 def load_wav_16k_mono(path):
     y, _ = librosa.load(path, sr=16000, mono=True)
     return y.astype("float32")
 
-def preprocess(file_path, label):
+
+def slice_file(file_path, label):
     wav = tf.numpy_function(load_wav_16k_mono, [file_path], tf.float32)
-    wav.set_shape([None])            # let TF know it's 1-D
-    wav = wav[:16000]
-    padding = 16000 - tf.shape(wav)[0]
-    wav = tf.pad(wav, [[0, padding]])
+    wav.set_shape([None])
+
+    windows = tf.signal.frame(wav, frame_length=WINDOW_SAMPLES, frame_step=WINDOW_SAMPLES, pad_end=False)
+    labels = tf.fill([tf.shape(windows)[0]], tf.cast(label, tf.float32))
+
+    return tf.data.Dataset.from_tensor_slices((windows, labels))
+
+
+def count_slices(path_labels):
+    counts = {0: 0, 1: 0}
+
+    for file_path, label in path_labels:
+        info = sf.info(file_path)
+        samples_per_window = info.samplerate * WINDOW_LENGTH
+        window_count = info.frames // samples_per_window
+
+        counts[label] += window_count
+
+    return counts
+
+
+def preprocess(wav, label):
+    wav.set_shape([WINDOW_SAMPLES])
 
     stft = tf.signal.stft(wav, frame_length=320, frame_step=32)
-    mag = tf.abs(stft)
+    magnitude = tf.abs(stft)
 
-    num_mel_bins = 64
-    num_spectrogram_bins = mag.shape[-1]
-    lower_hz, upper_hz = 80.0, 7600.0
     linear_to_mel = tf.signal.linear_to_mel_weight_matrix(
-        num_mel_bins, num_spectrogram_bins, 16000, lower_hz, upper_hz
+        num_mel_bins=64,
+        num_spectrogram_bins=magnitude.shape[-1],
+        sample_rate=SAMPLE_RATE,
+        lower_edge_hertz=80.0,
+        upper_edge_hertz=7600.0
     )
-    mel = tf.matmul(mag, linear_to_mel)
 
-    log_mel = tf.math.log(mel + 1e-6)[..., tf.newaxis]
+    mel = tf.matmul(magnitude, linear_to_mel)
+    log_mel = tf.math.log(mel + 1e-6)
 
-    return log_mel, label
+    return log_mel[..., tf.newaxis], label
 
-def get_datasets():
-    # directories for the positive and negative training files
-    POSITIVE = os.path.join(ROOT, "data", "positive")
-    NEGATIVE = os.path.join(ROOT, "data", "negative")
 
-    # gets a list of wav files in those directories
-    pos = tf.data.Dataset.list_files(os.path.join(POSITIVE, '*.wav'))
-    neg = tf.data.Dataset.list_files(os.path.join(NEGATIVE, '*.wav'))
+def build_dataset(path_labels, training):
+    paths, labels = zip(*path_labels)
 
-    # turn those lists into datasets, and add the 1/0 labels for siren/no siren
-    positives = tf.data.Dataset.zip((pos, tf.data.Dataset.from_tensor_slices(tf.ones(len(pos)))))
-    negatives = tf.data.Dataset.zip((neg, tf.data.Dataset.from_tensor_slices(tf.zeros(len(neg)))))
+    dataset = tf.data.Dataset.from_tensor_slices((list(paths), list(labels)))
+    dataset = dataset.flat_map(slice_file)
+    dataset = dataset.map(preprocess, num_parallel_calls=tf.data.AUTOTUNE)
 
-    # There are considerably more non-siren examples than siren examples, so this weights each class to make it fair
-    positiveCount = tf.data.experimental.cardinality(positives).numpy()
-    negativeCount = tf.data.experimental.cardinality(negatives).numpy()
-    total = positiveCount + negativeCount
-    print(f"Positive samples: {positiveCount},  Negative samples: {negativeCount},  Total samples: {total}")
-    classWeight = {
-        0: total / (2 * negativeCount) * 2,  # Penalise false positives
-        1: total / (2 * positiveCount),
+    if training:
+        dataset = dataset.shuffle(buffer_size=1000, seed=RANDOM_SEED, reshuffle_each_iteration=True)
+
+    return dataset.batch(16).prefetch(tf.data.AUTOTUNE)
+
+def get_datasets(test_fold):
+    folds = [f"fold_{fold}" for fold in range(1, 11)]
+    folds.remove(f"fold_{test_fold}")
+    pos_paths = []
+    neg_paths = []
+
+    for fold in folds:
+        pos_paths += [(f"data/{fold}/positive/{filename}", 1) for filename in os.listdir(f"data/{fold}/positive/") if filename.endswith(".wav")]
+        neg_paths += [(f"data/{fold}/negative/{filename}", 0) for filename in os.listdir(f"data/{fold}/negative/") if filename.endswith(".wav")]
+
+    train_paths = sorted(pos_paths + neg_paths)
+    rng = random.Random(RANDOM_SEED)
+    rng.shuffle(train_paths)
+
+    test_paths = [(f"data/fold_{test_fold}/positive/{filename}", 1) for filename in os.listdir(f"data/fold_{test_fold}/positive/") if filename.endswith(".wav")]
+    test_paths += [(f"data/fold_{test_fold}/negative/{filename}", 0) for filename in os.listdir(f"data/fold_{test_fold}/negative/") if filename.endswith(".wav")]
+
+    train_slice_counts = count_slices(train_paths)
+    test_slice_counts = count_slices(test_paths)
+
+    negative_count = train_slice_counts[0]
+    positive_count = train_slice_counts[1]
+    total = negative_count + positive_count
+
+    class_weight = {
+        0: total / (2 * negative_count),
+        1: total / (2 * positive_count),
     }
 
-    print(f"Negative weight: {classWeight[0]},  Positive weight: {classWeight[1]}")
+    train = build_dataset(train_paths, training=True)
+    test = build_dataset(test_paths, training=False)
 
-    data = positives.concatenate(negatives) # concatenate them to one dataset
+    train_length = sum(train_slice_counts.values())
+    test_length = sum(test_slice_counts.values())
 
-    data = data.map(preprocess, num_parallel_calls=tf.data.AUTOTUNE)
-    data = data.shuffle(buffer_size=1000)
-    data = data.batch(16)
-    data = data.prefetch(8)
+    print(f"Training samples: {train_length},  Test samples: {test_length},  Total samples: {train_length + test_length}")
+    print(f"Positive samples: {positive_count}, Negative samples: {negative_count}")
+    print(f"Negative weight: {class_weight[0]:.3f},  Positive weight: {class_weight[1]:.3f}")
 
-    # define the training and testing partitions
-    train = data.take(int(len(data) * 0.7))
-    test = data.skip(int(len(data) * 0.7)).take(len(data) - int(len(data) * 0.7))
-
-    return train, test, classWeight
+    return train, test, class_weight
