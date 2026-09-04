@@ -1,6 +1,9 @@
+import os
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+
 from dotenv import load_dotenv
 import json
-import os
 from tensorflow import keras
 from construct_dataset import get_datasets, WINDOW_SAMPLES
 
