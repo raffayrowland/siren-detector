@@ -3,6 +3,9 @@ import os
 import random
 import soundfile as sf
 import librosa
+import tensorflow_hub as hub
+
+yamnet = hub.load("https://tfhub.dev/google/yamnet/1")
 
 SAMPLE_RATE = 16000
 WINDOW_LENGTH = 2
@@ -41,22 +44,18 @@ def count_slices(path_labels):
 
 def preprocess(wav, label):
     wav.set_shape([WINDOW_SAMPLES])
+    wav = tf.clip_by_value(tf.cast(wav, tf.float32), -1.0, 1.0)
 
-    stft = tf.signal.stft(wav, frame_length=320, frame_step=32)
-    magnitude = tf.abs(stft)
+    _, embeddings, _ = yamnet(wav)
 
-    linear_to_mel = tf.signal.linear_to_mel_weight_matrix(
-        num_mel_bins=64,
-        num_spectrogram_bins=magnitude.shape[-1],
-        sample_rate=SAMPLE_RATE,
-        lower_edge_hertz=80.0,
-        upper_edge_hertz=7600.0
-    )
+    # Describe both the overall clip and its strongest local event.
+    features = tf.concat([
+        tf.reduce_mean(embeddings, axis=0),
+        tf.reduce_max(embeddings, axis=0),
+    ], axis=0)
 
-    mel = tf.matmul(magnitude, linear_to_mel)
-    log_mel = tf.math.log(mel + 1e-6)
-
-    return log_mel[..., tf.newaxis], label
+    features.set_shape([2048])
+    return tf.stop_gradient(features), label
 
 
 def build_dataset(path_labels, training):
@@ -65,6 +64,7 @@ def build_dataset(path_labels, training):
     dataset = tf.data.Dataset.from_tensor_slices((list(paths), list(labels)))
     dataset = dataset.flat_map(slice_file)
     dataset = dataset.map(preprocess, num_parallel_calls=tf.data.AUTOTUNE)
+    dataset = dataset.cache()
 
     if training:
         dataset = dataset.shuffle(buffer_size=1000, seed=RANDOM_SEED, reshuffle_each_iteration=True)

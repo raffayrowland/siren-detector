@@ -2,11 +2,11 @@ import os
 import sys
 import time
 import threading
-
+import tensorflow_hub as hub
+from tensorflow import keras
 import numpy as np
 import sounddevice as sd
 import tensorflow as tf
-
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
@@ -15,36 +15,29 @@ BLOCK_SIZE = 512
 PREDICTION_INTERVAL = 0.05
 SIREN_THRESHOLD = 0.5
 REQUIRED_SIREN_PREDICTIONS = 10
+MODEL_PATH = "models/siren_head.keras"
 
 
-print("Loading model...")
+print("Loading models...")
 
-if not os.path.exists("models/siren_detector"):
-    raise FileNotFoundError("No models found")
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError(f"No classifier found at {MODEL_PATH}; run train.py first")
 
-model = tf.saved_model.load("models/siren_detector")
-
-mel_matrix = tf.signal.linear_to_mel_weight_matrix(
-    num_mel_bins=64,
-    num_spectrogram_bins=257,
-    sample_rate=SAMPLE_RATE,
-    lower_edge_hertz=80.0,
-    upper_edge_hertz=7600.0,
-)
+yamnet = hub.load("https://tfhub.dev/google/yamnet/1")
+classifier = keras.models.load_model(MODEL_PATH)
 
 
 @tf.function(input_signature=[tf.TensorSpec([WINDOW_SIZE], tf.float32)])
 def predict(samples):
-    spectrogram = tf.signal.stft(
-        samples,
-        frame_length=320,
-        frame_step=32,
-        fft_length=512,
-    )
-    mel = tf.matmul(tf.abs(spectrogram), mel_matrix)
-    log_mel = tf.math.log(mel + 1e-6)
-    result = model.serve(log_mel[tf.newaxis, ..., tf.newaxis])
-    return tf.reshape(result, [-1])[0]
+    samples = tf.clip_by_value(samples, -1.0, 1.0)
+    _, embeddings, _ = yamnet(samples)
+
+    features = tf.concat([
+        tf.reduce_mean(embeddings, axis=0),
+        tf.reduce_max(embeddings, axis=0),
+    ], axis=0)
+
+    return classifier(features[tf.newaxis, :], training=False)[0, 0]
 
 
 audio_buffer = np.zeros(WINDOW_SIZE, dtype=np.float32)
