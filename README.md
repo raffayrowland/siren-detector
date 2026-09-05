@@ -14,7 +14,12 @@ Demo with no siren present:
 
 [![No siren demo](https://img.youtube.com/vi/wHFWJi1kZ6E/0.jpg)](https://www.youtube.com/watch?v=wHFWJi1kZ6E)
 
+## Approach
 
+The previous 2 seconds of audio is encoded using yamnet which produces a sequence of embeddings, and their mean is 
+concatenated into a 2048-dimensional embedding. This embedding is provided to the trained head, which outputs a number 
+from 0 to 1. If that number is over the threshold, the sample is deemed positive. For a "siren present" output to be 
+shown to a user, the previous 10 predictions need to be positive. This is to reduce the effect of false positives.
 
 ## Installation
 
@@ -35,32 +40,24 @@ python predict_live.py
 * Can be integrated into cars to display visual warnings
 * Useful for drivers with hearing impairments and for added safety in general
 
-## Requirements
-
-* Python 3.11
-* 4GB RAM for training
-* 1GB RAM for inference
-* 550mb disk space for model
-* Packages in `requirements.txt`
-
 ## Tech stack
 
-* Python 3.11
+* Python 3.12
 * Tensorflow
-* CNN on log-mel spectrograms
+* yamnet encoder
+* numpy
 
 ## Dataset
 
-* Used UrbanSound8k 
-* Preprocessing: converted clips to log-mel spectrograms
+This project uses UrbanSound8K, using clips tagged 'siren' as positive samples and everything else as negative. 
+clips shorter than 2 seconds are not used
 * [UrbanSound8k Dataset](https://urbansounddataset.weebly.com/urbansound8k.html)
 
 
 ## Evaluation
 
-* Accuracy: 95% on test set
-* Precision: 0.92 on test set
-* Recall: 0.99 on test set
+* Precision: 0.98 on test set
+* Recall: 0.93 on test set
 
 ## License
 

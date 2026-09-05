@@ -15,7 +15,7 @@ BLOCK_SIZE = 512
 PREDICTION_INTERVAL = 0.05
 SIREN_THRESHOLD = 0.5
 REQUIRED_SIREN_PREDICTIONS = 10
-MODEL_PATH = "models/siren_head.keras"
+MODEL_PATH = "models/siren_head_test_9.keras"
 
 
 print("Loading models...")
